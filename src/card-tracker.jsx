@@ -1,4 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import {
+  ArrowLeft, Settings, Plus, CreditCard, Check, Pencil, Trash2,
+  AlertCircle, AlertTriangle, Clock, CheckCircle2, Loader2,
+  Lightbulb, LogOut,
+} from "lucide-react";
 import { useCards } from "./hooks/useCards";
 
 const BANKS = [
@@ -28,19 +33,20 @@ function getDaysUntil(dateStr) {
   return Math.round((target - today) / (1000 * 60 * 60 * 24));
 }
 
-function getUrgencyKey(daysUntil) {
-  if (daysUntil < 0)  return "expired";
-  if (daysUntil === 0) return "today";
-  if (daysUntil === 1) return "tomorrow";
-  if (daysUntil <= 5)  return "soon";
-  if (daysUntil <= 15) return "upcoming";
+function getUrgencyKey(d) {
+  if (d < 0)  return "expired";
+  if (d === 0) return "today";
+  if (d === 1) return "tomorrow";
+  if (d <= 5)  return "soon";
+  if (d <= 15) return "upcoming";
   return "ok";
 }
 
 function formatDate(dateStr) {
   if (!dateStr) return "—";
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("es-MX", {
+    day: "2-digit", month: "short", year: "numeric",
+  });
 }
 
 function formatCurrency(val) {
@@ -49,7 +55,8 @@ function formatCurrency(val) {
 }
 
 const emptyForm = {
-  alias: "", bank: "bbva", last4: "", cutDate: "", payDate: "", limit: "", balance: "", minPay: "",
+  alias: "", bank: "bbva", last4: "", cutDate: "", payDate: "",
+  limit: "", balance: "", minPay: "",
 };
 
 const labelStyle = {
@@ -63,6 +70,13 @@ const inputStyle = {
   fontFamily: "'Sora', sans-serif", boxSizing: "border-box",
   transition: "border-color 0.15s",
 };
+
+function AlertIcon({ days }) {
+  if (days < 0)  return <AlertCircle  size={22} />;
+  if (days <= 1) return <AlertTriangle size={22} />;
+  if (days <= 5) return <Clock         size={22} />;
+  return               <CheckCircle2  size={22} />;
+}
 
 export default function CardTracker({ userId, onSignOut }) {
   const { cards, loading, createCard, updateCard, deleteCard, markPaid } = useCards(userId);
@@ -84,13 +98,9 @@ export default function CardTracker({ userId, onSignOut }) {
 
   useEffect(() => {
     if (!notifEnabled || cards.length === 0) return;
-    const urgent = cards.filter((c) => {
-      const d = getDaysUntil(c.payDate);
-      return d >= 0 && d <= 3;
-    });
-    if (urgent.length > 0) {
-      setTimeout(() => showToast(`⚠️ ${urgent.length} tarjeta(s) con pago próximo`, "warning"), 800);
-    }
+    const urgent = cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 3; });
+    if (urgent.length > 0)
+      setTimeout(() => showToast(`${urgent.length} tarjeta(s) con pago próximo`, "warning"), 800);
   }, [cards.length]);
 
   const bank = (id) => BANKS.find((b) => b.id === id) || BANKS[BANKS.length - 1];
@@ -105,10 +115,7 @@ export default function CardTracker({ userId, onSignOut }) {
   const totalLimit   = cards.reduce((s, c) => s + (parseFloat(c.limit)   || 0), 0);
 
   function goHome() {
-    setView("home");
-    setEditId(null);
-    setForm(emptyForm);
-    setSelectedCard(null);
+    setView("home"); setEditId(null); setForm(emptyForm); setSelectedCard(null);
   }
 
   async function handleSave() {
@@ -125,30 +132,21 @@ export default function CardTracker({ userId, onSignOut }) {
       if (error) { showToast("Error al agregar: " + error, "error"); return; }
       showToast("Tarjeta agregada");
     }
-    setForm(emptyForm);
-    setEditId(null);
-    setView("home");
+    setForm(emptyForm); setEditId(null); setView("home");
   }
 
-  function handleEdit(card) {
-    setForm({ ...card });
-    setEditId(card.id);
-    setView("add");
-  }
+  function handleEdit(card) { setForm({ ...card }); setEditId(card.id); setView("add"); }
 
   async function handleDelete(id) {
     const { error } = await deleteCard(id);
     if (error) { showToast("Error al eliminar", "error"); return; }
-    setDeleteConfirm(null);
-    setView("home");
-    showToast("Tarjeta eliminada");
+    setDeleteConfirm(null); setView("home"); showToast("Tarjeta eliminada");
   }
 
   async function handleMarkPaid(id) {
     const { error } = await markPaid(id);
     if (error) { showToast("Error al registrar pago", "error"); return; }
-    showToast("✅ Pago registrado");
-    setView("home");
+    showToast("Pago registrado"); setView("home");
   }
 
   // ── CARD CHIP ────────────────────────────────────────────────────────
@@ -157,15 +155,17 @@ export default function CardTracker({ userId, onSignOut }) {
     const payDays  = getDaysUntil(card.payDate);
     const cutDays  = getDaysUntil(card.cutDate);
     const urgency  = URGENCY[getUrgencyKey(payDays)];
-    const usagePct = card.limit ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100) : 0;
+    const usagePct = card.limit
+      ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100)
+      : 0;
 
     return (
       <div
         onClick={() => { setSelectedCard(card); setView("detail"); }}
+        className="pp-card"
         style={{
           background: "#fff", borderRadius: 20, padding: "20px",
-          marginBottom: 14, cursor: "pointer",
-          boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+          cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
           border: `1.5px solid ${urgency.ring}`,
           transition: "transform 0.15s, box-shadow 0.15s",
           position: "relative", overflow: "hidden",
@@ -185,9 +185,9 @@ export default function CardTracker({ userId, onSignOut }) {
             <span style={{
               background: urgency.bg, color: urgency.color,
               fontSize: 11, fontWeight: 700, padding: "4px 10px",
-              borderRadius: 20, letterSpacing: "0.03em",
+              borderRadius: 20, letterSpacing: "0.03em", whiteSpace: "nowrap",
             }}>
-              {payDays < 0 ? `${Math.abs(payDays)}d vencida` : payDays === 0 ? "¡Hoy!" : `${payDays}d para pagar`}
+              {payDays < 0 ? `${Math.abs(payDays)}d vencida` : payDays === 0 ? "Hoy" : `${payDays}d para pagar`}
             </span>
           </div>
 
@@ -237,10 +237,12 @@ export default function CardTracker({ userId, onSignOut }) {
     const payDays  = getDaysUntil(card.payDate);
     const cutDays  = getDaysUntil(card.cutDate);
     const urgency  = URGENCY[getUrgencyKey(payDays)];
-    const usagePct = card.limit ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100) : 0;
+    const usagePct = card.limit
+      ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100)
+      : 0;
 
     return (
-      <div style={{ paddingBottom: 100 }}>
+      <div className="pp-panel">
         <div style={{
           background: `linear-gradient(135deg, ${b.color}, ${b.accent})`,
           borderRadius: 20, padding: "28px 24px", color: "#fff",
@@ -262,14 +264,14 @@ export default function CardTracker({ userId, onSignOut }) {
           borderRadius: 14, padding: "14px 18px",
           display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
         }}>
-          <span style={{ fontSize: 24 }}>
-            {payDays < 0 ? "🚨" : payDays <= 1 ? "⚠️" : payDays <= 5 ? "⏰" : "✅"}
+          <span style={{ color: urgency.color, flexShrink: 0 }}>
+            <AlertIcon days={payDays} />
           </span>
           <div>
             <div style={{ fontWeight: 700, color: urgency.color, fontSize: 14 }}>
               {payDays < 0 ? `Pago vencido hace ${Math.abs(payDays)} día(s)` :
-               payDays === 0 ? "¡El pago vence hoy!" :
-               payDays === 1 ? "¡El pago vence mañana!" :
+               payDays === 0 ? "El pago vence hoy" :
+               payDays === 1 ? "El pago vence mañana" :
                `${payDays} días para el pago límite`}
             </div>
             <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
@@ -280,10 +282,10 @@ export default function CardTracker({ userId, onSignOut }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
           {[
-            { label: "Fecha de corte",    value: formatDate(card.cutDate), sub: cutDays >= 0 ? `en ${cutDays} días` : `hace ${Math.abs(cutDays)} días` },
-            { label: "Pago mínimo",       value: formatCurrency(card.minPay), sub: "este período" },
-            { label: "Saldo actual",      value: formatCurrency(card.balance), sub: `${usagePct.toFixed(0)}% del límite` },
-            { label: "Crédito disponible",value: formatCurrency((parseFloat(card.limit) || 0) - (parseFloat(card.balance) || 0)), sub: "disponible" },
+            { label: "Fecha de corte",     value: formatDate(card.cutDate),   sub: cutDays >= 0 ? `en ${cutDays} días` : `hace ${Math.abs(cutDays)} días` },
+            { label: "Pago mínimo",        value: formatCurrency(card.minPay), sub: "este período" },
+            { label: "Saldo actual",       value: formatCurrency(card.balance), sub: `${usagePct.toFixed(0)}% del límite` },
+            { label: "Crédito disponible", value: formatCurrency((parseFloat(card.limit) || 0) - (parseFloat(card.balance) || 0)), sub: "disponible" },
           ].map(({ label, value, sub }) => (
             <div key={label} style={{ background: "#F9FAFB", borderRadius: 14, padding: "14px 16px" }}>
               <div style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
@@ -313,22 +315,23 @@ export default function CardTracker({ userId, onSignOut }) {
             color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
             marginBottom: 10, fontFamily: "'Sora', sans-serif",
             boxShadow: `0 4px 14px ${b.color}44`,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >
-          ✓ Marcar como Pagado
+          <Check size={18} /> Marcar como Pagado
         </button>
         <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={() => handleEdit(card)}
-            style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#374151" }}
+            style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
           >
-            ✏️ Editar
+            <Pencil size={14} /> Editar
           </button>
           <button
             onClick={() => setDeleteConfirm(card.id)}
-            style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #FEE2E2", background: "#FFF5F5", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#EF4444" }}
+            style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #FEE2E2", background: "#FFF5F5", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#EF4444", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
           >
-            🗑️ Eliminar
+            <Trash2 size={14} /> Eliminar
           </button>
         </div>
       </div>
@@ -337,7 +340,7 @@ export default function CardTracker({ userId, onSignOut }) {
 
   // ── FORM VIEW ────────────────────────────────────────────────────────
   const FormView = () => (
-    <div style={{ paddingBottom: 100 }}>
+    <div className="pp-panel">
       <p style={{ color: "#6B7280", fontSize: 13, marginBottom: 20 }}>
         {editId ? "Edita los datos de tu tarjeta." : "Ingresa los datos de tu tarjeta de crédito."}
       </p>
@@ -363,13 +366,13 @@ export default function CardTracker({ userId, onSignOut }) {
       </div>
 
       {[
-        { key: "alias",   label: "Nombre / Alias",          placeholder: "ej. BBVA Platino", type: "text" },
-        { key: "last4",   label: "Últimos 4 dígitos",        placeholder: "1234",             type: "text", maxLength: 4 },
-        { key: "cutDate", label: "Fecha de corte *",          placeholder: "",                 type: "date" },
-        { key: "payDate", label: "Fecha límite de pago *",    placeholder: "",                 type: "date" },
-        { key: "limit",   label: "Límite de crédito (MXN)",   placeholder: "25000",            type: "number" },
-        { key: "balance", label: "Saldo actual (MXN)",         placeholder: "0",               type: "number" },
-        { key: "minPay",  label: "Pago mínimo (MXN)",          placeholder: "0",               type: "number" },
+        { key: "alias",   label: "Nombre / Alias",         placeholder: "ej. BBVA Platino", type: "text" },
+        { key: "last4",   label: "Últimos 4 dígitos",       placeholder: "1234",             type: "text", maxLength: 4 },
+        { key: "cutDate", label: "Fecha de corte *",         placeholder: "",                 type: "date" },
+        { key: "payDate", label: "Fecha límite de pago *",   placeholder: "",                 type: "date" },
+        { key: "limit",   label: "Límite de crédito (MXN)",  placeholder: "25000",            type: "number" },
+        { key: "balance", label: "Saldo actual (MXN)",        placeholder: "0",               type: "number" },
+        { key: "minPay",  label: "Pago mínimo (MXN)",         placeholder: "0",               type: "number" },
       ].map(({ key, label, placeholder, type, maxLength }) => (
         <div key={key} style={{ marginBottom: 14 }}>
           <label style={labelStyle}>{label}</label>
@@ -392,8 +395,10 @@ export default function CardTracker({ userId, onSignOut }) {
           color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
           marginTop: 8, fontFamily: "'Sora', sans-serif",
           boxShadow: `0 4px 14px ${bank(form.bank).color}44`,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         }}
       >
+        <Check size={18} />
         {editId ? "Guardar cambios" : "Agregar tarjeta"}
       </button>
     </div>
@@ -401,7 +406,7 @@ export default function CardTracker({ userId, onSignOut }) {
 
   // ── SETTINGS VIEW ────────────────────────────────────────────────────
   const SettingsView = () => (
-    <div>
+    <div className="pp-panel">
       <p style={{ color: "#6B7280", fontSize: 13, marginBottom: 20 }}>
         Configura cómo y cuándo recibir alertas de vencimiento.
       </p>
@@ -417,7 +422,7 @@ export default function CardTracker({ userId, onSignOut }) {
             style={{
               width: 48, height: 28, borderRadius: 99, cursor: "pointer",
               background: notifEnabled ? "#10B981" : "#D1D5DB",
-              position: "relative", transition: "background 0.2s",
+              position: "relative", transition: "background 0.2s", flexShrink: 0,
             }}
           >
             <div style={{
@@ -454,22 +459,25 @@ export default function CardTracker({ userId, onSignOut }) {
       )}
 
       <div style={{ background: "#F9FAFB", borderRadius: 16, padding: 18, marginBottom: 14 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>Cuenta</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 12 }}>Cuenta</div>
         <button
           onClick={onSignOut}
           style={{
             width: "100%", padding: "12px", borderRadius: 12,
             border: "1.5px solid #FEE2E2", background: "#FFF5F5",
             fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#EF4444",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >
-          Cerrar sesión
+          <LogOut size={15} /> Cerrar sesión
         </button>
       </div>
 
       <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 16, padding: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: "#065F46", marginBottom: 4 }}>💡 Próximas funciones</div>
-        <ul style={{ fontSize: 12, color: "#047857", margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: "#065F46", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <Lightbulb size={14} /> Próximas funciones
+        </div>
+        <ul style={{ fontSize: 12, color: "#047857", margin: 0, paddingLeft: 16, lineHeight: 1.9 }}>
           <li>Notificaciones push nativas (iOS/Android)</li>
           <li>Sincronización automática con banco</li>
           <li>Recordatorios por WhatsApp / SMS</li>
@@ -482,7 +490,7 @@ export default function CardTracker({ userId, onSignOut }) {
 
   // ── RENDER ───────────────────────────────────────────────────────────
   const viewTitle = {
-    home:     "Mis Tarjetas",
+    home:     "PayPinga",
     add:      editId ? "Editar tarjeta" : "Nueva tarjeta",
     detail:   selectedCard?.alias,
     settings: "Configuración",
@@ -492,66 +500,204 @@ export default function CardTracker({ userId, onSignOut }) {
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap');
-        * { box-sizing: border-box; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        .pp-root {
+          min-height: 100vh;
+          background: #F3F4F6;
+          font-family: 'Sora', sans-serif;
+        }
+
+        /* Mobile status bar sim */
+        .pp-statusbar { height: 12px; background: #111827; }
+
+        .pp-header {
+          background: #111827;
+          padding: 16px 20px 20px;
+          color: #fff;
+        }
+        .pp-header-inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .pp-header-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .pp-summary {
+          margin-top: 16px;
+          background: rgba(255,255,255,0.07);
+          border-radius: 16px;
+          padding: 16px;
+        }
+
+        .pp-content {
+          padding: 16px;
+        }
+
+        /* Cards: single column mobile */
+        .pp-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        /* Detail / Form / Settings panel */
+        .pp-panel {
+          padding-bottom: 100px;
+        }
+
+        /* Filters row */
+        .pp-filters {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding-bottom: 12px;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+          margin-bottom: 4px;
+        }
+        .pp-filters::-webkit-scrollbar { display: none; }
+
+        /* Icon buttons */
+        .pp-icon-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          cursor: pointer;
+          transition: opacity 0.15s;
+        }
+        .pp-icon-btn:hover { opacity: 0.8; }
+
+        /* --- Desktop overrides --- */
+        @media (min-width: 768px) {
+          .pp-statusbar { display: none; }
+
+          .pp-header {
+            padding: 20px 40px 24px;
+          }
+
+          .pp-header-title {
+            font-size: 24px !important;
+          }
+
+          .pp-summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 32px;
+          }
+
+          .pp-summary-amount {
+            font-size: 32px !important;
+          }
+
+          .pp-content {
+            padding: 24px 40px;
+            max-width: 1280px;
+            margin: 0 auto;
+          }
+
+          /* 2-column card grid on desktop */
+          .pp-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+          }
+
+          /* Card: reset bottom margin on desktop (gap handles it) */
+          .pp-card { margin-bottom: 0 !important; }
+
+          /* Detail/form centered panel on desktop */
+          .pp-panel {
+            max-width: 680px;
+            margin: 0 auto;
+            padding-bottom: 60px;
+          }
+        }
+
+        @media (min-width: 1200px) {
+          .pp-grid {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
         input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
         input:focus { border-color: #3B82F6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 99px; }
+
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .pp-spin { animation: spin 1s linear infinite; }
       `}</style>
 
-      <div style={{
-        maxWidth: 390, margin: "0 auto", minHeight: "100vh",
-        background: "#F3F4F6", fontFamily: "'Sora', sans-serif", position: "relative",
-      }}>
-        <div style={{ height: 12, background: "#111827" }} />
+      <div className="pp-root">
+        <div className="pp-statusbar" />
 
         {/* Header */}
-        <div style={{ background: "#111827", padding: "16px 20px 20px", color: "#fff" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="pp-header">
+          <div className="pp-header-inner">
+            <div className="pp-header-left">
               {view !== "home" && (
                 <button
                   onClick={goHome}
-                  style={{ background: "none", border: "none", color: "#fff", fontSize: 22, cursor: "pointer", padding: 0, lineHeight: 1 }}
+                  className="pp-icon-btn"
+                  style={{ background: "rgba(255,255,255,0.1)", color: "#fff", width: 36, height: 36, borderRadius: "50%" }}
                 >
-                  ‹
+                  <ArrowLeft size={18} />
                 </button>
               )}
-              <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em" }}>
+              <span className="pp-header-title" style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>
                 {viewTitle[view]}
               </span>
             </div>
+
             {view === "home" && (
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => setView("settings")}
-                  style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: 36, height: 36, borderRadius: "50%", cursor: "pointer", fontSize: 16 }}
+                  className="pp-icon-btn"
+                  style={{ background: "rgba(255,255,255,0.1)", color: "#fff", width: 36, height: 36, borderRadius: "50%" }}
                 >
-                  ⚙️
+                  <Settings size={16} />
                 </button>
                 <button
                   onClick={() => { setForm(emptyForm); setEditId(null); setView("add"); }}
-                  style={{ background: "#3B82F6", border: "none", color: "#fff", width: 36, height: 36, borderRadius: "50%", cursor: "pointer", fontSize: 20, fontWeight: 700 }}
+                  className="pp-icon-btn"
+                  style={{ background: "#3B82F6", color: "#fff", width: 36, height: 36, borderRadius: "50%" }}
                 >
-                  +
+                  <Plus size={20} />
                 </button>
               </div>
             )}
           </div>
 
           {view === "home" && (
-            <div style={{ marginTop: 16, background: "rgba(255,255,255,0.07)", borderRadius: 16, padding: "16px" }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
-                Deuda total · {cards.length} tarjeta{cards.length !== 1 ? "s" : ""}
+            <div className="pp-summary">
+              <div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
+                  Deuda total · {cards.length} tarjeta{cards.length !== 1 ? "s" : ""}
+                </div>
+                <div className="pp-summary-amount" style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>
+                  {formatCurrency(totalBalance)}
+                </div>
               </div>
-              <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em" }}>
-                {formatCurrency(totalBalance)}
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>de {formatCurrency(totalLimit)} en límites</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: 0 }}>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                  de {formatCurrency(totalLimit)} en límites
+                </span>
                 {alertCards.length > 0 && (
-                  <span style={{ background: "#EF4444", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99 }}>
+                  <span style={{ background: "#EF4444", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, whiteSpace: "nowrap" }}>
                     {alertCards.length} pago{alertCards.length > 1 ? "s" : ""} urgente{alertCards.length > 1 ? "s" : ""}
                   </span>
                 )}
@@ -561,47 +707,61 @@ export default function CardTracker({ userId, onSignOut }) {
         </div>
 
         {/* Content */}
-        <div style={{ padding: "16px 16px 0" }}>
+        <div className="pp-content">
           {view === "home" && (
             <>
-              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
-                {[["all", "Todas"], ["expired", "Vencidas"], ["today", "Hoy"], ["tomorrow", "Mañana"], ["soon", "Pronto"], ["ok", "Al corriente"]].map(([key, lbl]) => (
+              <div className="pp-filters">
+                {[["all","Todas"],["expired","Vencidas"],["today","Hoy"],["tomorrow","Mañana"],["soon","Pronto"],["ok","Al corriente"]].map(([key, lbl]) => (
                   <button
                     key={key}
                     onClick={() => setFilterUrgency(key)}
                     style={{
-                      whiteSpace: "nowrap", padding: "6px 14px", borderRadius: 99, border: "none",
+                      whiteSpace: "nowrap", padding: "7px 16px", borderRadius: 99,
+                      border: "none",
                       background: filterUrgency === key ? "#111827" : "#fff",
                       color: filterUrgency === key ? "#fff" : "#6B7280",
                       fontSize: 12, fontWeight: 600, cursor: "pointer",
-                      boxShadow: filterUrgency === key ? "0 2px 8px rgba(0,0,0,0.2)" : "none",
+                      boxShadow: filterUrgency === key ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.06)",
+                      transition: "all 0.15s",
                     }}
                   >{lbl}</button>
                 ))}
               </div>
 
               {loading ? (
-                <div style={{ textAlign: "center", padding: "48px 20px", color: "#9CA3AF" }}>
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+                <div style={{ textAlign: "center", padding: "60px 20px", color: "#9CA3AF" }}>
+                  <div className="pp-spin" style={{ display: "inline-flex", marginBottom: 12, color: "#D1D5DB" }}>
+                    <Loader2 size={32} />
+                  </div>
                   <div style={{ fontSize: 14, color: "#6B7280" }}>Cargando tarjetas...</div>
                 </div>
               ) : filteredCards.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "48px 20px", color: "#9CA3AF" }}>
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>💳</div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>
+                <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                  <div style={{ display: "inline-flex", marginBottom: 16, color: "#D1D5DB" }}>
+                    <CreditCard size={52} />
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "#374151", marginBottom: 4 }}>
                     {cards.length === 0 ? "Sin tarjetas registradas" : "Sin resultados en este filtro"}
                   </div>
                   {cards.length === 0 && (
                     <button
                       onClick={() => setView("add")}
-                      style={{ marginTop: 16, padding: "12px 24px", borderRadius: 12, border: "none", background: "#111827", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}
+                      style={{
+                        marginTop: 16, padding: "12px 24px", borderRadius: 12,
+                        border: "none", background: "#111827", color: "#fff",
+                        fontWeight: 700, cursor: "pointer", fontSize: 14,
+                        display: "inline-flex", alignItems: "center", gap: 8,
+                        fontFamily: "'Sora', sans-serif",
+                      }}
                     >
-                      + Agregar tarjeta
+                      <Plus size={16} /> Agregar tarjeta
                     </button>
                   )}
                 </div>
               ) : (
-                filteredCards.map((card) => <CardChip key={card.id} card={card} />)
+                <div className="pp-grid">
+                  {filteredCards.map((card) => <CardChip key={card.id} card={card} />)}
+                </div>
               )}
             </>
           )}
@@ -618,15 +778,21 @@ export default function CardTracker({ userId, onSignOut }) {
             display: "flex", alignItems: "flex-end", justifyContent: "center",
             zIndex: 100, padding: 16,
           }}>
-            <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 390 }}>
+            <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 480 }}>
               <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 8 }}>¿Eliminar tarjeta?</div>
               <div style={{ color: "#6B7280", fontSize: 14, marginBottom: 20 }}>Esta acción no se puede deshacer.</div>
               <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => setDeleteConfirm(null)} style={{ flex: 1, padding: 14, borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  style={{ flex: 1, padding: 14, borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: "'Sora', sans-serif" }}
+                >
                   Cancelar
                 </button>
-                <button onClick={() => handleDelete(deleteConfirm)} style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", background: "#EF4444", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
-                  Eliminar
+                <button
+                  onClick={() => handleDelete(deleteConfirm)}
+                  style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", background: "#EF4444", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: "'Sora', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                >
+                  <Trash2 size={15} /> Eliminar
                 </button>
               </div>
             </div>
@@ -636,7 +802,7 @@ export default function CardTracker({ userId, onSignOut }) {
         {/* Toast */}
         {toast && (
           <div style={{
-            position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+            position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
             background: toast.type === "error" ? "#EF4444" : toast.type === "warning" ? "#F59E0B" : "#111827",
             color: "#fff", padding: "12px 20px", borderRadius: 12, fontSize: 13, fontWeight: 600,
             boxShadow: "0 8px 24px rgba(0,0,0,0.25)", zIndex: 200, whiteSpace: "nowrap",
@@ -645,16 +811,7 @@ export default function CardTracker({ userId, onSignOut }) {
             {toast.msg}
           </div>
         )}
-
-        {view === "home" && <div style={{ height: 70 }} />}
       </div>
-
-      <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateX(-50%) translateY(10px); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
-      `}</style>
     </>
   );
 }
