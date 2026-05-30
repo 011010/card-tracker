@@ -46,6 +46,17 @@ function sortByPayDate(cards) {
   return [...cards].sort((a, b) => a.payDate.localeCompare(b.payDate));
 }
 
+// Advances a YYYY-MM-DD date by one calendar month, clamping to the last day
+// of the target month (e.g. Jan 31 → Feb 28/29, Mar 31 → Apr 30).
+function addOneMonth(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const targetMonth = (d.getMonth() + 1) % 12;
+  const targetYear  = d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
+  const lastDay     = new Date(targetYear, targetMonth + 1, 0).getDate();
+  return new Date(targetYear, targetMonth, Math.min(d.getDate(), lastDay))
+    .toISOString().split("T")[0];
+}
+
 export function useCards(userId) {
   const isLocal = !supabase || userId === "local";
 
@@ -138,15 +149,11 @@ export function useCards(userId) {
   async function markPaid(id) {
     const card = cards.find((c) => c.id === id);
     if (!card) return { error: "Tarjeta no encontrada" };
-    const nextPay = new Date(card.payDate + "T00:00:00");
-    nextPay.setMonth(nextPay.getMonth() + 1);
-    const nextCut = new Date(card.cutDate + "T00:00:00");
-    nextCut.setMonth(nextCut.getMonth() + 1);
     return updateCard(id, {
       ...card,
       balance: "0",
-      payDate: nextPay.toISOString().split("T")[0],
-      cutDate: nextCut.toISOString().split("T")[0],
+      payDate: addOneMonth(card.payDate),
+      cutDate: addOneMonth(card.cutDate),
     });
   }
 

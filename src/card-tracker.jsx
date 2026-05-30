@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ArrowLeft, Settings, Plus, CreditCard, Check, Pencil, Trash2,
   AlertCircle, AlertTriangle, Clock, CheckCircle2, Loader2,
@@ -58,6 +58,9 @@ const emptyForm = {
   alias: "", bank: "bbva", last4: "", cutDate: "", payDate: "",
   limit: "", balance: "", minPay: "",
 };
+
+const VALID_BANKS = new Set(BANKS.map((b) => b.id));
+const DATE_RE     = /^\d{4}-\d{2}-\d{2}$/;
 
 const labelStyle = {
   display: "block", fontSize: 12, fontWeight: 700, color: "#374151",
@@ -454,21 +457,32 @@ export default function CardTracker({ userId, onSignOut }) {
       setTimeout(() => showToast(`${urgent.length} tarjeta(s) con pago próximo`, "warning"), 800);
   }, [cards.length, notifEnabled, showToast]);
 
-  const sortedCards   = [...cards].sort((a, b) => getDaysUntil(a.payDate) - getDaysUntil(b.payDate));
-  const filteredCards = filterUrgency === "all"
-    ? sortedCards
-    : sortedCards.filter((c) => getUrgencyKey(getDaysUntil(c.payDate)) === filterUrgency);
-
-  const alertCards   = cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 5; });
-  const totalBalance = cards.reduce((s, c) => s + (parseFloat(c.balance) || 0), 0);
-  const totalLimit   = cards.reduce((s, c) => s + (parseFloat(c.limit)   || 0), 0);
+  const sortedCards = useMemo(
+    () => [...cards].sort((a, b) => getDaysUntil(a.payDate) - getDaysUntil(b.payDate)),
+    [cards],
+  );
+  const filteredCards = useMemo(
+    () => filterUrgency === "all"
+      ? sortedCards
+      : sortedCards.filter((c) => getUrgencyKey(getDaysUntil(c.payDate)) === filterUrgency),
+    [sortedCards, filterUrgency],
+  );
+  const alertCards = useMemo(
+    () => cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 5; }),
+    [cards],
+  );
+  const totalBalance = useMemo(
+    () => cards.reduce((s, c) => s + (parseFloat(c.balance) || 0), 0),
+    [cards],
+  );
+  const totalLimit = useMemo(
+    () => cards.reduce((s, c) => s + (parseFloat(c.limit) || 0), 0),
+    [cards],
+  );
 
   function goHome() {
     setView("home"); setEditId(null); setForm(emptyForm); setSelectedCard(null);
   }
-
-  const VALID_BANKS = new Set(BANKS.map((b) => b.id));
-  const DATE_RE     = /^\d{4}-\d{2}-\d{2}$/;
 
   async function handleSave() {
     if (!form.alias.trim() || !form.cutDate || !form.payDate) {
@@ -545,7 +559,6 @@ export default function CardTracker({ userId, onSignOut }) {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         .pp-root {
@@ -706,6 +719,7 @@ export default function CardTracker({ userId, onSignOut }) {
               {view !== "home" && (
                 <button
                   onClick={goHome}
+                  aria-label="Regresar"
                   className="pp-icon-btn"
                   style={{ background: "rgba(255,255,255,0.1)", color: "#fff", width: 36, height: 36, borderRadius: "50%" }}
                 >
@@ -721,6 +735,7 @@ export default function CardTracker({ userId, onSignOut }) {
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => setView("settings")}
+                  aria-label="Configuración"
                   className="pp-icon-btn"
                   style={{ background: "rgba(255,255,255,0.1)", color: "#fff", width: 36, height: 36, borderRadius: "50%" }}
                 >
@@ -728,6 +743,7 @@ export default function CardTracker({ userId, onSignOut }) {
                 </button>
                 <button
                   onClick={() => { setForm(emptyForm); setEditId(null); setView("add"); }}
+                  aria-label="Agregar tarjeta"
                   className="pp-icon-btn"
                   style={{ background: "#3B82F6", color: "#fff", width: 36, height: 36, borderRadius: "50%" }}
                 >
