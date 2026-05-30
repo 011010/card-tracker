@@ -69,7 +69,7 @@ export function useCards(userId) {
       .order("pay_date", { ascending: true });
 
     if (error) {
-      setError(error.message);
+      setError("No se pudieron cargar las tarjetas.");
     } else {
       setCards(data.map(dbToCard));
       setError(null);
@@ -109,7 +109,7 @@ export function useCards(userId) {
       .insert(cardToDb(card, userId))
       .select()
       .single();
-    if (error) return { error: error.message };
+    if (error) return { error: "No se pudo agregar la tarjeta." };
     setCards((prev) => sortByPayDate([...prev, dbToCard(data)]));
     return { error: null };
   }
@@ -122,7 +122,7 @@ export function useCards(userId) {
       .eq("id", id)
       .select()
       .single();
-    if (error) return { error: error.message };
+    if (error) return { error: "No se pudo actualizar la tarjeta." };
     setCards((prev) => prev.map((c) => (c.id === id ? dbToCard(data) : c)));
     return { error: null };
   }
@@ -130,7 +130,7 @@ export function useCards(userId) {
   async function deleteCard(id) {
     if (isLocal) return lsDelete(id);
     const { error } = await supabase.from("cards").delete().eq("id", id);
-    if (error) return { error: error.message };
+    if (error) return { error: "No se pudo eliminar la tarjeta." };
     setCards((prev) => prev.filter((c) => c.id !== id));
     return { error: null };
   }
@@ -139,9 +139,9 @@ export function useCards(userId) {
     const card = cards.find((c) => c.id === id);
     if (!card) return { error: "Tarjeta no encontrada" };
     const nextPay = new Date(card.payDate + "T00:00:00");
-    nextPay.setDate(nextPay.getDate() + 30);
+    nextPay.setMonth(nextPay.getMonth() + 1);
     const nextCut = new Date(card.cutDate + "T00:00:00");
-    nextCut.setDate(nextCut.getDate() + 30);
+    nextCut.setMonth(nextCut.getMonth() + 1);
     return updateCard(id, {
       ...card,
       balance: "0",

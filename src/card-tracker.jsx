@@ -71,6 +71,10 @@ const inputStyle = {
   transition: "border-color 0.15s",
 };
 
+function getBank(id) {
+  return BANKS.find((b) => b.id === id) || BANKS[BANKS.length - 1];
+}
+
 function AlertIcon({ days }) {
   if (days < 0)  return <AlertCircle  size={22} />;
   if (days <= 1) return <AlertTriangle size={22} />;
@@ -78,268 +82,198 @@ function AlertIcon({ days }) {
   return               <CheckCircle2  size={22} />;
 }
 
-export default function CardTracker({ userId, onSignOut }) {
-  const { cards, loading, createCard, updateCard, deleteCard, markPaid } = useCards(userId);
+// ── CARD CHIP ────────────────────────────────────────────────────────
+function CardChip({ card, onSelect }) {
+  const b        = getBank(card.bank);
+  const payDays  = getDaysUntil(card.payDate);
+  const cutDays  = getDaysUntil(card.cutDate);
+  const urgency  = URGENCY[getUrgencyKey(payDays)];
+  const usagePct = card.limit
+    ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100)
+    : 0;
 
-  const [view, setView]                   = useState("home");
-  const [form, setForm]                   = useState(emptyForm);
-  const [editId, setEditId]               = useState(null);
-  const [selectedCard, setSelectedCard]   = useState(null);
-  const [notifEnabled, setNotifEnabled]   = useState(true);
-  const [notifDays, setNotifDays]         = useState([1, 3, 7]);
-  const [toast, setToast]                 = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [filterUrgency, setFilterUrgency] = useState("all");
-
-  const showToast = useCallback((msg, type = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
-
-  useEffect(() => {
-    if (!notifEnabled || cards.length === 0) return;
-    const urgent = cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 3; });
-    if (urgent.length > 0)
-      setTimeout(() => showToast(`${urgent.length} tarjeta(s) con pago próximo`, "warning"), 800);
-  }, [cards.length]);
-
-  const bank = (id) => BANKS.find((b) => b.id === id) || BANKS[BANKS.length - 1];
-
-  const sortedCards   = [...cards].sort((a, b) => getDaysUntil(a.payDate) - getDaysUntil(b.payDate));
-  const filteredCards = filterUrgency === "all"
-    ? sortedCards
-    : sortedCards.filter((c) => getUrgencyKey(getDaysUntil(c.payDate)) === filterUrgency);
-
-  const alertCards   = cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 5; });
-  const totalBalance = cards.reduce((s, c) => s + (parseFloat(c.balance) || 0), 0);
-  const totalLimit   = cards.reduce((s, c) => s + (parseFloat(c.limit)   || 0), 0);
-
-  function goHome() {
-    setView("home"); setEditId(null); setForm(emptyForm); setSelectedCard(null);
-  }
-
-  async function handleSave() {
-    if (!form.alias || !form.cutDate || !form.payDate) {
-      showToast("Alias, fecha de corte y fecha de pago son requeridos", "error");
-      return;
-    }
-    if (editId) {
-      const { error } = await updateCard(editId, form);
-      if (error) { showToast("Error al actualizar: " + error, "error"); return; }
-      showToast("Tarjeta actualizada");
-    } else {
-      const { error } = await createCard(form);
-      if (error) { showToast("Error al agregar: " + error, "error"); return; }
-      showToast("Tarjeta agregada");
-    }
-    setForm(emptyForm); setEditId(null); setView("home");
-  }
-
-  function handleEdit(card) { setForm({ ...card }); setEditId(card.id); setView("add"); }
-
-  async function handleDelete(id) {
-    const { error } = await deleteCard(id);
-    if (error) { showToast("Error al eliminar", "error"); return; }
-    setDeleteConfirm(null); setView("home"); showToast("Tarjeta eliminada");
-  }
-
-  async function handleMarkPaid(id) {
-    const { error } = await markPaid(id);
-    if (error) { showToast("Error al registrar pago", "error"); return; }
-    showToast("Pago registrado"); setView("home");
-  }
-
-  // ── CARD CHIP ────────────────────────────────────────────────────────
-  const CardChip = ({ card }) => {
-    const b        = bank(card.bank);
-    const payDays  = getDaysUntil(card.payDate);
-    const cutDays  = getDaysUntil(card.cutDate);
-    const urgency  = URGENCY[getUrgencyKey(payDays)];
-    const usagePct = card.limit
-      ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100)
-      : 0;
-
-    return (
-      <div
-        onClick={() => { setSelectedCard(card); setView("detail"); }}
-        className="pp-card"
-        style={{
-          background: "#fff", borderRadius: 20, padding: "20px",
-          cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
-          border: `1.5px solid ${urgency.ring}`,
-          transition: "transform 0.15s, box-shadow 0.15s",
-          position: "relative", overflow: "hidden",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.12)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.07)"; }}
-      >
-        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: b.color, borderRadius: "20px 0 0 20px" }} />
-        <div style={{ marginLeft: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, color: "#111827" }}>{card.alias}</div>
-              <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 1 }}>
-                {bank(card.bank).name} •••• {card.last4 || "****"}
-              </div>
-            </div>
-            <span style={{
-              background: urgency.bg, color: urgency.color,
-              fontSize: 11, fontWeight: 700, padding: "4px 10px",
-              borderRadius: 20, letterSpacing: "0.03em", whiteSpace: "nowrap",
-            }}>
-              {payDays < 0 ? `${Math.abs(payDays)}d vencida` : payDays === 0 ? "Hoy" : `${payDays}d para pagar`}
-            </span>
-          </div>
-
-          <div style={{ display: "flex", gap: 20, marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>Corte</div>
-              <div style={{ fontSize: 13, color: "#374151", fontWeight: 600, marginTop: 2 }}>
-                {formatDate(card.cutDate)}
-                {cutDays >= 0 && <span style={{ color: "#9CA3AF", fontWeight: 400, fontSize: 11 }}> ({cutDays}d)</span>}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>Pago límite</div>
-              <div style={{ fontSize: 13, color: urgency.color, fontWeight: 700, marginTop: 2 }}>{formatDate(card.payDate)}</div>
-            </div>
-          </div>
-
-          {card.limit && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: "#9CA3AF" }}>Uso del crédito</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: usagePct > 80 ? "#EF4444" : usagePct > 60 ? "#F59E0B" : "#10B981" }}>
-                  {usagePct.toFixed(0)}%
-                </span>
-              </div>
-              <div style={{ background: "#F3F4F6", borderRadius: 99, height: 6, overflow: "hidden" }}>
-                <div style={{
-                  width: `${usagePct}%`, height: "100%",
-                  background: usagePct > 80 ? "#EF4444" : usagePct > 60 ? "#F59E0B" : b.color,
-                  borderRadius: 99, transition: "width 0.6s ease",
-                }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                <span style={{ fontSize: 11, color: "#374151", fontWeight: 600 }}>{formatCurrency(card.balance)}</span>
-                <span style={{ fontSize: 11, color: "#9CA3AF" }}>de {formatCurrency(card.limit)}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // ── DETAIL VIEW ──────────────────────────────────────────────────────
-  const DetailView = ({ card }) => {
-    const b        = bank(card.bank);
-    const payDays  = getDaysUntil(card.payDate);
-    const cutDays  = getDaysUntil(card.cutDate);
-    const urgency  = URGENCY[getUrgencyKey(payDays)];
-    const usagePct = card.limit
-      ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100)
-      : 0;
-
-    return (
-      <div className="pp-panel">
-        <div style={{
-          background: `linear-gradient(135deg, ${b.color}, ${b.accent})`,
-          borderRadius: 20, padding: "28px 24px", color: "#fff",
-          marginBottom: 20, position: "relative", overflow: "hidden",
-          boxShadow: `0 8px 32px ${b.color}55`,
-        }}>
-          <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />
-          <div style={{ position: "absolute", bottom: -20, left: 40, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
-          <div style={{ fontFamily: "'Sora', sans-serif", fontSize: 13, opacity: 0.8, marginBottom: 4 }}>{b.name}</div>
-          <div style={{ fontFamily: "monospace", fontSize: 20, letterSpacing: "0.15em", marginBottom: 16 }}>
-            •••• •••• •••• {card.last4 || "••••"}
-          </div>
-          <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 22 }}>{card.alias}</div>
-          <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>Límite: {formatCurrency(card.limit)}</div>
-        </div>
-
-        <div style={{
-          background: urgency.bg, border: `1px solid ${urgency.ring}`,
-          borderRadius: 14, padding: "14px 18px",
-          display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
-        }}>
-          <span style={{ color: urgency.color, flexShrink: 0 }}>
-            <AlertIcon days={payDays} />
-          </span>
+  return (
+    <div
+      onClick={() => onSelect(card)}
+      className="pp-card"
+      style={{
+        background: "#fff", borderRadius: 20, padding: "20px",
+        cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+        border: `1.5px solid ${urgency.ring}`,
+        transition: "transform 0.15s, box-shadow 0.15s",
+        position: "relative", overflow: "hidden",
+      }}
+    >
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: b.color, borderRadius: "20px 0 0 20px" }} />
+      <div style={{ marginLeft: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
           <div>
-            <div style={{ fontWeight: 700, color: urgency.color, fontSize: 14 }}>
-              {payDays < 0 ? `Pago vencido hace ${Math.abs(payDays)} día(s)` :
-               payDays === 0 ? "El pago vence hoy" :
-               payDays === 1 ? "El pago vence mañana" :
-               `${payDays} días para el pago límite`}
-            </div>
-            <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-              Fecha límite: {formatDate(card.payDate)}
+            <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, color: "#111827" }}>{card.alias}</div>
+            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 1 }}>
+              {getBank(card.bank).name} •••• {card.last4 || "****"}
             </div>
           </div>
+          <span style={{
+            background: urgency.bg, color: urgency.color,
+            fontSize: 11, fontWeight: 700, padding: "4px 10px",
+            borderRadius: 20, letterSpacing: "0.03em", whiteSpace: "nowrap",
+          }}>
+            {payDays < 0 ? `${Math.abs(payDays)}d vencida` : payDays === 0 ? "Hoy" : `${payDays}d para pagar`}
+          </span>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-          {[
-            { label: "Fecha de corte",     value: formatDate(card.cutDate),   sub: cutDays >= 0 ? `en ${cutDays} días` : `hace ${Math.abs(cutDays)} días` },
-            { label: "Pago mínimo",        value: formatCurrency(card.minPay), sub: "este período" },
-            { label: "Saldo actual",       value: formatCurrency(card.balance), sub: `${usagePct.toFixed(0)}% del límite` },
-            { label: "Crédito disponible", value: formatCurrency((parseFloat(card.limit) || 0) - (parseFloat(card.balance) || 0)), sub: "disponible" },
-          ].map(({ label, value, sub }) => (
-            <div key={label} style={{ background: "#F9FAFB", borderRadius: 14, padding: "14px 16px" }}>
-              <div style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
-              <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, color: "#111827" }}>{value}</div>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{sub}</div>
+        <div style={{ display: "flex", gap: 20, marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>Corte</div>
+            <div style={{ fontSize: 13, color: "#374151", fontWeight: 600, marginTop: 2 }}>
+              {formatDate(card.cutDate)}
+              {cutDays >= 0 && <span style={{ color: "#9CA3AF", fontWeight: 400, fontSize: 11 }}> ({cutDays}d)</span>}
             </div>
-          ))}
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>Pago límite</div>
+            <div style={{ fontSize: 13, color: urgency.color, fontWeight: 700, marginTop: 2 }}>{formatDate(card.payDate)}</div>
+          </div>
         </div>
 
         {card.limit && (
-          <div style={{ background: "#F9FAFB", borderRadius: 14, padding: "16px", marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>Uso del crédito</span>
-              <span style={{ fontWeight: 700, fontSize: 13, color: usagePct > 80 ? "#EF4444" : "#10B981" }}>{usagePct.toFixed(1)}%</span>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: "#9CA3AF" }}>Uso del crédito</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: usagePct > 80 ? "#EF4444" : usagePct > 60 ? "#F59E0B" : "#10B981" }}>
+                {usagePct.toFixed(0)}%
+              </span>
             </div>
-            <div style={{ background: "#E5E7EB", borderRadius: 99, height: 10, overflow: "hidden" }}>
-              <div style={{ width: `${usagePct}%`, height: "100%", background: usagePct > 80 ? "#EF4444" : usagePct > 60 ? "#F59E0B" : b.color, borderRadius: 99 }} />
+            <div style={{ background: "#F3F4F6", borderRadius: 99, height: 6, overflow: "hidden" }}>
+              <div style={{
+                width: `${usagePct}%`, height: "100%",
+                background: usagePct > 80 ? "#EF4444" : usagePct > 60 ? "#F59E0B" : b.color,
+                borderRadius: 99, transition: "width 0.6s ease",
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+              <span style={{ fontSize: 11, color: "#374151", fontWeight: 600 }}>{formatCurrency(card.balance)}</span>
+              <span style={{ fontSize: 11, color: "#9CA3AF" }}>de {formatCurrency(card.limit)}</span>
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
 
-        <button
-          onClick={() => handleMarkPaid(card.id)}
-          style={{
-            width: "100%", padding: "16px", borderRadius: 14, border: "none",
-            background: `linear-gradient(135deg, ${b.color}, ${b.accent})`,
-            color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
-            marginBottom: 10, fontFamily: "'Sora', sans-serif",
-            boxShadow: `0 4px 14px ${b.color}44`,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          }}
-        >
-          <Check size={18} /> Marcar como Pagado
-        </button>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => handleEdit(card)}
-            style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-          >
-            <Pencil size={14} /> Editar
-          </button>
-          <button
-            onClick={() => setDeleteConfirm(card.id)}
-            style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #FEE2E2", background: "#FFF5F5", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#EF4444", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-          >
-            <Trash2 size={14} /> Eliminar
-          </button>
+// ── DETAIL VIEW ──────────────────────────────────────────────────────
+function DetailView({ card, onMarkPaid, onEdit, onDeleteRequest }) {
+  const b        = getBank(card.bank);
+  const payDays  = getDaysUntil(card.payDate);
+  const cutDays  = getDaysUntil(card.cutDate);
+  const urgency  = URGENCY[getUrgencyKey(payDays)];
+  const usagePct = card.limit
+    ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100)
+    : 0;
+
+  return (
+    <div className="pp-panel">
+      <div style={{
+        background: `linear-gradient(135deg, ${b.color}, ${b.accent})`,
+        borderRadius: 20, padding: "28px 24px", color: "#fff",
+        marginBottom: 20, position: "relative", overflow: "hidden",
+        boxShadow: `0 8px 32px ${b.color}55`,
+      }}>
+        <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />
+        <div style={{ position: "absolute", bottom: -20, left: 40, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
+        <div style={{ fontFamily: "'Sora', sans-serif", fontSize: 13, opacity: 0.8, marginBottom: 4 }}>{b.name}</div>
+        <div style={{ fontFamily: "monospace", fontSize: 20, letterSpacing: "0.15em", marginBottom: 16 }}>
+          •••• •••• •••• {card.last4 || "••••"}
+        </div>
+        <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 22 }}>{card.alias}</div>
+        <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>Límite: {formatCurrency(card.limit)}</div>
+      </div>
+
+      <div style={{
+        background: urgency.bg, border: `1px solid ${urgency.ring}`,
+        borderRadius: 14, padding: "14px 18px",
+        display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
+      }}>
+        <span style={{ color: urgency.color, flexShrink: 0 }}>
+          <AlertIcon days={payDays} />
+        </span>
+        <div>
+          <div style={{ fontWeight: 700, color: urgency.color, fontSize: 14 }}>
+            {payDays < 0 ? `Pago vencido hace ${Math.abs(payDays)} día(s)` :
+             payDays === 0 ? "El pago vence hoy" :
+             payDays === 1 ? "El pago vence mañana" :
+             `${payDays} días para el pago límite`}
+          </div>
+          <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+            Fecha límite: {formatDate(card.payDate)}
+          </div>
         </div>
       </div>
-    );
-  };
 
-  // ── FORM VIEW ────────────────────────────────────────────────────────
-  const FormView = () => (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+        {[
+          { label: "Fecha de corte",     value: formatDate(card.cutDate),   sub: cutDays >= 0 ? `en ${cutDays} días` : `hace ${Math.abs(cutDays)} días` },
+          { label: "Pago mínimo",        value: formatCurrency(card.minPay), sub: "este período" },
+          { label: "Saldo actual",       value: formatCurrency(card.balance), sub: `${usagePct.toFixed(0)}% del límite` },
+          { label: "Crédito disponible", value: formatCurrency((parseFloat(card.limit) || 0) - (parseFloat(card.balance) || 0)), sub: "disponible" },
+        ].map(({ label, value, sub }) => (
+          <div key={label} style={{ background: "#F9FAFB", borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
+            <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, color: "#111827" }}>{value}</div>
+            <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {card.limit && (
+        <div style={{ background: "#F9FAFB", borderRadius: 14, padding: "16px", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>Uso del crédito</span>
+            <span style={{ fontWeight: 700, fontSize: 13, color: usagePct > 80 ? "#EF4444" : "#10B981" }}>{usagePct.toFixed(1)}%</span>
+          </div>
+          <div style={{ background: "#E5E7EB", borderRadius: 99, height: 10, overflow: "hidden" }}>
+            <div style={{ width: `${usagePct}%`, height: "100%", background: usagePct > 80 ? "#EF4444" : usagePct > 60 ? "#F59E0B" : b.color, borderRadius: 99 }} />
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={() => onMarkPaid(card.id)}
+        style={{
+          width: "100%", padding: "16px", borderRadius: 14, border: "none",
+          background: `linear-gradient(135deg, ${b.color}, ${b.accent})`,
+          color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
+          marginBottom: 10, fontFamily: "'Sora', sans-serif",
+          boxShadow: `0 4px 14px ${b.color}44`,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}
+      >
+        <Check size={18} /> Marcar como Pagado
+      </button>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={() => onEdit(card)}
+          style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+        >
+          <Pencil size={14} /> Editar
+        </button>
+        <button
+          onClick={() => onDeleteRequest(card.id)}
+          style={{ flex: 1, padding: "13px", borderRadius: 14, border: "1.5px solid #FEE2E2", background: "#FFF5F5", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#EF4444", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+        >
+          <Trash2 size={14} /> Eliminar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── FORM VIEW ────────────────────────────────────────────────────────
+function FormView({ form, setForm, editId, onSave }) {
+  const b = getBank(form.bank);
+
+  return (
     <div className="pp-panel">
       <p style={{ color: "#6B7280", fontSize: 13, marginBottom: 20 }}>
         {editId ? "Edita los datos de tu tarjeta." : "Ingresa los datos de tu tarjeta de crédito."}
@@ -348,37 +282,41 @@ export default function CardTracker({ userId, onSignOut }) {
       <div style={{ marginBottom: 16 }}>
         <label style={labelStyle}>Banco</label>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-          {BANKS.map((b) => (
+          {BANKS.map((bank) => (
             <button
-              key={b.id}
-              onClick={() => setForm((f) => ({ ...f, bank: b.id }))}
+              key={bank.id}
+              onClick={() => setForm((f) => ({ ...f, bank: bank.id }))}
               style={{
                 padding: "10px 4px", borderRadius: 12,
-                border: `2px solid ${form.bank === b.id ? b.color : "#E5E7EB"}`,
-                background: form.bank === b.id ? b.color + "15" : "#fff",
+                border: `2px solid ${form.bank === bank.id ? bank.color : "#E5E7EB"}`,
+                background: form.bank === bank.id ? bank.color + "15" : "#fff",
                 fontSize: 10, fontWeight: 700, cursor: "pointer",
-                color: form.bank === b.id ? b.color : "#6B7280",
+                color: form.bank === bank.id ? bank.color : "#6B7280",
                 transition: "all 0.15s",
               }}
-            >{b.name}</button>
+            >{bank.name}</button>
           ))}
         </div>
       </div>
 
       {[
-        { key: "alias",   label: "Nombre / Alias",         placeholder: "ej. BBVA Platino", type: "text" },
-        { key: "last4",   label: "Últimos 4 dígitos",       placeholder: "1234",             type: "text", maxLength: 4 },
+        { key: "alias",   label: "Nombre / Alias",         placeholder: "ej. BBVA Platino", type: "text",   maxLength: 100 },
+        { key: "last4",   label: "Últimos 4 dígitos",       placeholder: "1234",             type: "text",   maxLength: 4, pattern: "[0-9]{4}", inputMode: "numeric" },
         { key: "cutDate", label: "Fecha de corte *",         placeholder: "",                 type: "date" },
         { key: "payDate", label: "Fecha límite de pago *",   placeholder: "",                 type: "date" },
-        { key: "limit",   label: "Límite de crédito (MXN)",  placeholder: "25000",            type: "number" },
-        { key: "balance", label: "Saldo actual (MXN)",        placeholder: "0",               type: "number" },
-        { key: "minPay",  label: "Pago mínimo (MXN)",         placeholder: "0",               type: "number" },
-      ].map(({ key, label, placeholder, type, maxLength }) => (
+        { key: "limit",   label: "Límite de crédito (MXN)",  placeholder: "25000",            type: "number", step: "0.01", min: "0.01" },
+        { key: "balance", label: "Saldo actual (MXN)",        placeholder: "0",               type: "number", step: "0.01", min: "0" },
+        { key: "minPay",  label: "Pago mínimo (MXN)",         placeholder: "0",               type: "number", step: "0.01", min: "0" },
+      ].map(({ key, label, placeholder, type, maxLength, step, min, pattern, inputMode }) => (
         <div key={key} style={{ marginBottom: 14 }}>
           <label style={labelStyle}>{label}</label>
           <input
             type={type}
             maxLength={maxLength}
+            step={step}
+            min={min}
+            pattern={pattern}
+            inputMode={inputMode}
             placeholder={placeholder}
             value={form[key]}
             onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
@@ -388,13 +326,13 @@ export default function CardTracker({ userId, onSignOut }) {
       ))}
 
       <button
-        onClick={handleSave}
+        onClick={onSave}
         style={{
           width: "100%", padding: "16px", borderRadius: 14, border: "none",
-          background: `linear-gradient(135deg, ${bank(form.bank).color}, ${bank(form.bank).accent})`,
+          background: `linear-gradient(135deg, ${b.color}, ${b.accent})`,
           color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
           marginTop: 8, fontFamily: "'Sora', sans-serif",
-          boxShadow: `0 4px 14px ${bank(form.bank).color}44`,
+          boxShadow: `0 4px 14px ${b.color}44`,
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         }}
       >
@@ -403,9 +341,11 @@ export default function CardTracker({ userId, onSignOut }) {
       </button>
     </div>
   );
+}
 
-  // ── SETTINGS VIEW ────────────────────────────────────────────────────
-  const SettingsView = () => (
+// ── SETTINGS VIEW ────────────────────────────────────────────────────
+function SettingsView({ notifEnabled, setNotifEnabled, notifDays, setNotifDays, onSignOut }) {
+  return (
     <div className="pp-panel">
       <p style={{ color: "#6B7280", fontSize: 13, marginBottom: 20 }}>
         Configura cómo y cuándo recibir alertas de vencimiento.
@@ -487,6 +427,112 @@ export default function CardTracker({ userId, onSignOut }) {
       </div>
     </div>
   );
+}
+
+export default function CardTracker({ userId, onSignOut }) {
+  const { cards, loading, createCard, updateCard, deleteCard, markPaid } = useCards(userId);
+
+  const [view, setView]                   = useState("home");
+  const [form, setForm]                   = useState(emptyForm);
+  const [editId, setEditId]               = useState(null);
+  const [selectedCard, setSelectedCard]   = useState(null);
+  const [notifEnabled, setNotifEnabled]   = useState(true);
+  const [notifDays, setNotifDays]         = useState([1, 3, 7]);
+  const [toast, setToast]                 = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [filterUrgency, setFilterUrgency] = useState("all");
+
+  const showToast = useCallback((msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  useEffect(() => {
+    if (!notifEnabled || cards.length === 0) return;
+    const urgent = cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 3; });
+    if (urgent.length > 0)
+      setTimeout(() => showToast(`${urgent.length} tarjeta(s) con pago próximo`, "warning"), 800);
+  }, [cards.length, notifEnabled, showToast]);
+
+  const sortedCards   = [...cards].sort((a, b) => getDaysUntil(a.payDate) - getDaysUntil(b.payDate));
+  const filteredCards = filterUrgency === "all"
+    ? sortedCards
+    : sortedCards.filter((c) => getUrgencyKey(getDaysUntil(c.payDate)) === filterUrgency);
+
+  const alertCards   = cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 5; });
+  const totalBalance = cards.reduce((s, c) => s + (parseFloat(c.balance) || 0), 0);
+  const totalLimit   = cards.reduce((s, c) => s + (parseFloat(c.limit)   || 0), 0);
+
+  function goHome() {
+    setView("home"); setEditId(null); setForm(emptyForm); setSelectedCard(null);
+  }
+
+  const VALID_BANKS = new Set(BANKS.map((b) => b.id));
+  const DATE_RE     = /^\d{4}-\d{2}-\d{2}$/;
+
+  async function handleSave() {
+    if (!form.alias.trim() || !form.cutDate || !form.payDate) {
+      showToast("Alias, fecha de corte y fecha de pago son requeridos", "error");
+      return;
+    }
+    if (form.alias.trim().length > 100) {
+      showToast("El alias no puede superar los 100 caracteres", "error");
+      return;
+    }
+    if (!VALID_BANKS.has(form.bank)) {
+      showToast("Banco no válido", "error");
+      return;
+    }
+    if (form.last4 && !/^\d{4}$/.test(form.last4)) {
+      showToast("Los últimos 4 dígitos deben ser exactamente 4 números", "error");
+      return;
+    }
+    if (!DATE_RE.test(form.cutDate) || !DATE_RE.test(form.payDate)) {
+      showToast("Formato de fecha inválido", "error");
+      return;
+    }
+    if (form.limit !== "" && (isNaN(parseFloat(form.limit)) || parseFloat(form.limit) <= 0)) {
+      showToast("El límite de crédito debe ser mayor a 0", "error");
+      return;
+    }
+    if (form.balance !== "" && (isNaN(parseFloat(form.balance)) || parseFloat(form.balance) < 0)) {
+      showToast("El saldo no puede ser negativo", "error");
+      return;
+    }
+    if (form.minPay !== "" && (isNaN(parseFloat(form.minPay)) || parseFloat(form.minPay) < 0)) {
+      showToast("El pago mínimo no puede ser negativo", "error");
+      return;
+    }
+    if (editId) {
+      const { error } = await updateCard(editId, form);
+      if (error) { showToast("Error al actualizar: " + error, "error"); return; }
+      showToast("Tarjeta actualizada");
+    } else {
+      const { error } = await createCard(form);
+      if (error) { showToast("Error al agregar: " + error, "error"); return; }
+      showToast("Tarjeta agregada");
+    }
+    setForm(emptyForm); setEditId(null); setView("home");
+  }
+
+  function handleEdit(card) { setForm({ ...card }); setEditId(card.id); setView("add"); }
+
+  async function handleDelete(id) {
+    const { error } = await deleteCard(id);
+    if (error) { showToast("Error al eliminar", "error"); return; }
+    setDeleteConfirm(null); setView("home"); showToast("Tarjeta eliminada");
+  }
+
+  async function handleMarkPaid(id) {
+    const { error } = await markPaid(id);
+    if (error) { showToast("Error al registrar pago", "error"); return; }
+    showToast("Pago registrado"); setView("home");
+  }
+
+  function handleCardSelect(card) {
+    setSelectedCard(card);
+    setView("detail");
+  }
 
   // ── RENDER ───────────────────────────────────────────────────────────
   const viewTitle = {
@@ -508,8 +554,8 @@ export default function CardTracker({ userId, onSignOut }) {
           font-family: 'Sora', sans-serif;
         }
 
-        /* Mobile status bar sim */
-        .pp-statusbar { height: 12px; background: #111827; }
+        /* Mobile status bar sim + safe area for notch/Dynamic Island */
+        .pp-statusbar { height: env(safe-area-inset-top, 12px); background: #111827; }
 
         .pp-header {
           background: #111827;
@@ -546,7 +592,7 @@ export default function CardTracker({ userId, onSignOut }) {
 
         /* Detail / Form / Settings panel */
         .pp-panel {
-          padding-bottom: 100px;
+          padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
         }
 
         /* Filters row */
@@ -560,6 +606,15 @@ export default function CardTracker({ userId, onSignOut }) {
           margin-bottom: 4px;
         }
         .pp-filters::-webkit-scrollbar { display: none; }
+
+        /* Card hover — pointer devices only to avoid stuck state on touch */
+        @media (hover: hover) {
+          .pp-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
+          }
+        }
+        .pp-card:active { opacity: 0.9; }
 
         /* Icon buttons */
         .pp-icon-btn {
@@ -615,7 +670,7 @@ export default function CardTracker({ userId, onSignOut }) {
           .pp-panel {
             max-width: 680px;
             margin: 0 auto;
-            padding-bottom: 60px;
+            padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
           }
         }
 
@@ -760,15 +815,39 @@ export default function CardTracker({ userId, onSignOut }) {
                 </div>
               ) : (
                 <div className="pp-grid">
-                  {filteredCards.map((card) => <CardChip key={card.id} card={card} />)}
+                  {filteredCards.map((card) => (
+                    <CardChip key={card.id} card={card} onSelect={handleCardSelect} />
+                  ))}
                 </div>
               )}
             </>
           )}
 
-          {view === "add"      && <FormView />}
-          {view === "detail"   && selectedCard && <DetailView card={selectedCard} />}
-          {view === "settings" && <SettingsView />}
+          {view === "add" && (
+            <FormView
+              form={form}
+              setForm={setForm}
+              editId={editId}
+              onSave={handleSave}
+            />
+          )}
+          {view === "detail" && selectedCard && (
+            <DetailView
+              card={selectedCard}
+              onMarkPaid={handleMarkPaid}
+              onEdit={handleEdit}
+              onDeleteRequest={setDeleteConfirm}
+            />
+          )}
+          {view === "settings" && (
+            <SettingsView
+              notifEnabled={notifEnabled}
+              setNotifEnabled={setNotifEnabled}
+              notifDays={notifDays}
+              setNotifDays={setNotifDays}
+              onSignOut={onSignOut}
+            />
+          )}
         </div>
 
         {/* Delete modal */}
@@ -805,8 +884,9 @@ export default function CardTracker({ userId, onSignOut }) {
             position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
             background: toast.type === "error" ? "#EF4444" : toast.type === "warning" ? "#F59E0B" : "#111827",
             color: "#fff", padding: "12px 20px", borderRadius: 12, fontSize: 13, fontWeight: 600,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)", zIndex: 200, whiteSpace: "nowrap",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)", zIndex: 200,
             animation: "fadeUp 0.25s ease",
+            maxWidth: "calc(100vw - 32px)", whiteSpace: "normal", textAlign: "center",
           }}>
             {toast.msg}
           </div>
