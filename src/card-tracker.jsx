@@ -33,6 +33,30 @@ function getDaysUntil(dateStr) {
   return Math.round((target - today) / (1000 * 60 * 60 * 24));
 }
 
+// El día del mes de la fecha guardada es recurrente (corte 4, límite 25…).
+// Devuelve la próxima ocurrencia de ese día (>= hoy) como YYYY-MM-DD, para que
+// las fechas se actualicen solas cada mes. Recorta a fin de mes en meses cortos
+// (ej. día 31 → 28/29 feb, 30 abr).
+function nextMonthlyDate(dateStr) {
+  if (!dateStr) return dateStr;
+  const day = parseInt(dateStr.slice(8, 10), 10);
+  if (!day) return dateStr;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const clampDay = (yr, mo) => Math.min(day, new Date(yr, mo + 1, 0).getDate());
+  let cand = new Date(y, m, clampDay(y, m));
+  if (cand < today) {
+    const ny = m === 11 ? y + 1 : y;
+    const nm = (m + 1) % 12;
+    cand = new Date(ny, nm, clampDay(ny, nm));
+  }
+  const mm = String(cand.getMonth() + 1).padStart(2, "0");
+  const dd = String(cand.getDate()).padStart(2, "0");
+  return `${cand.getFullYear()}-${mm}-${dd}`;
+}
+
 function getUrgencyKey(d) {
   if (d < 0)  return "expired";
   if (d === 0) return "today";
@@ -450,16 +474,27 @@ export default function CardTracker({ userId, onSignOut }) {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // Recalcula corte/límite a su próxima ocurrencia mensual en cada render,
+  // de modo que las fechas avancen solas mes a mes sin intervención del usuario.
+  const dynamicCards = useMemo(
+    () => cards.map((c) => ({
+      ...c,
+      cutDate: nextMonthlyDate(c.cutDate),
+      payDate: nextMonthlyDate(c.payDate),
+    })),
+    [cards],
+  );
+
   useEffect(() => {
-    if (!notifEnabled || cards.length === 0) return;
-    const urgent = cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 3; });
+    if (!notifEnabled || dynamicCards.length === 0) return;
+    const urgent = dynamicCards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 3; });
     if (urgent.length > 0)
       setTimeout(() => showToast(`${urgent.length} tarjeta(s) con pago próximo`, "warning"), 800);
-  }, [cards.length, notifEnabled, showToast]);
+  }, [dynamicCards, notifEnabled, showToast]);
 
   const sortedCards = useMemo(
-    () => [...cards].sort((a, b) => getDaysUntil(a.payDate) - getDaysUntil(b.payDate)),
-    [cards],
+    () => [...dynamicCards].sort((a, b) => getDaysUntil(a.payDate) - getDaysUntil(b.payDate)),
+    [dynamicCards],
   );
   const filteredCards = useMemo(
     () => filterUrgency === "all"
@@ -468,8 +503,8 @@ export default function CardTracker({ userId, onSignOut }) {
     [sortedCards, filterUrgency],
   );
   const alertCards = useMemo(
-    () => cards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 5; }),
-    [cards],
+    () => dynamicCards.filter((c) => { const d = getDaysUntil(c.payDate); return d >= 0 && d <= 5; }),
+    [dynamicCards],
   );
   const totalBalance = useMemo(
     () => cards.reduce((s, c) => s + (parseFloat(c.balance) || 0), 0),
@@ -529,7 +564,10 @@ export default function CardTracker({ userId, onSignOut }) {
     setForm(emptyForm); setEditId(null); setView("home");
   }
 
-  function handleEdit(card) { setForm({ ...card }); setEditId(card.id); setView("add"); }
+  function handleEdit(card) {
+    const raw = cards.find((c) => c.id === card.id) || card;
+    setForm({ ...raw }); setEditId(raw.id); setView("add");
+  }
 
   async function handleDelete(id) {
     const { error } = await deleteCard(id);
