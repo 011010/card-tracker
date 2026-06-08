@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ArrowLeft, Settings, Plus, CreditCard, Check, Pencil, Trash2,
   AlertCircle, AlertTriangle, Clock, CheckCircle2, Loader2,
-  Lightbulb, LogOut,
+  Lightbulb, LogOut, ShoppingBag, X, CalendarClock,
 } from "lucide-react";
-import { useCards } from "./hooks/useCards";
+import {
+  useCards, purchaseMonthly, purchaseRemainingMonths, purchaseRemaining,
+} from "./hooks/useCards";
 
 const BANKS = [
   { id: "bbva",       name: "BBVA",       color: "#004481", accent: "#1464A0" },
@@ -80,8 +82,11 @@ function formatCurrency(val) {
 
 const emptyForm = {
   alias: "", bank: "bbva", last4: "", cutDate: "", payDate: "",
-  limit: "", balance: "", minPay: "",
+  limit: "", minPay: "",
 };
+
+// Plazos comunes de "meses sin intereses" en México (1 = una sola exhibición).
+const MONTH_PRESETS = [1, 3, 6, 9, 12, 18, 24];
 
 const VALID_BANKS = new Set(BANKS.map((b) => b.id));
 const DATE_RE     = /^\d{4}-\d{2}-\d{2}$/;
@@ -163,6 +168,19 @@ function CardChip({ card, onSelect }) {
           </div>
         </div>
 
+        {card.estimatedPayment > 0 && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: 12,
+            padding: "8px 12px", marginBottom: 12,
+          }}>
+            <span style={{ fontSize: 11, color: "#0369A1", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+              <CalendarClock size={13} /> Pago estimado próximo corte
+            </span>
+            <span style={{ fontSize: 13, color: "#0C4A6E", fontWeight: 800 }}>{formatCurrency(card.estimatedPayment)}</span>
+          </div>
+        )}
+
         {card.limit && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -189,15 +207,212 @@ function CardChip({ card, onSelect }) {
   );
 }
 
+// ── PURCHASE FORM (alta / edición) ───────────────────────────────────
+function PurchaseForm({ accent, initial, minMonths = 1, onCancel, onSubmit }) {
+  const [desc, setDesc]     = useState(initial?.description || "");
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
+  const [months, setMonths] = useState(initial?.months || 3);
+
+  function submit() {
+    const amt = parseFloat(amount);
+    if (isNaN(amt) || amt <= 0) return;
+    const m = parseInt(months, 10);
+    if (isNaN(m) || m < minMonths || m > 60) return;
+    onSubmit({ description: desc.trim(), amount: amt, months: m });
+  }
+
+  const m = parseInt(months, 10);
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 14, marginTop: 4 }}>
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Concepto (opcional)</label>
+        <input
+          type="text" maxLength={100} placeholder="ej. Laptop"
+          value={desc} onChange={(e) => setDesc(e.target.value)} style={inputStyle}
+        />
+      </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Monto (MXN)</label>
+          <input
+            type="number" step="0.01" min="0.01" inputMode="decimal" placeholder="12000"
+            value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle}
+          />
+        </div>
+        <div style={{ width: 100 }}>
+          <label style={labelStyle}>Meses</label>
+          <input
+            type="number" min={minMonths} max="60" inputMode="numeric"
+            value={months} onChange={(e) => setMonths(e.target.value)} style={inputStyle}
+          />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        {MONTH_PRESETS.map((preset) => {
+          const disabled = preset < minMonths;
+          return (
+            <button
+              key={preset}
+              onClick={() => !disabled && setMonths(preset)}
+              disabled={disabled}
+              style={{
+                padding: "6px 12px", borderRadius: 99, cursor: disabled ? "not-allowed" : "pointer",
+                fontSize: 12, fontWeight: 700, opacity: disabled ? 0.4 : 1,
+                border: `1.5px solid ${m === preset ? accent : "#E5E7EB"}`,
+                background: m === preset ? accent + "15" : "#fff",
+                color: m === preset ? accent : "#6B7280",
+                fontFamily: "'Sora', sans-serif",
+              }}
+            >{preset === 1 ? "1 exhib." : `${preset}`}</button>
+          );
+        })}
+      </div>
+      {minMonths > 1 && (
+        <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>
+          Ya pagaste {minMonths} mensualidad{minMonths > 1 ? "es" : ""}; los meses no pueden ser menos.
+        </div>
+      )}
+      {parseFloat(amount) > 0 && m >= minMonths && (
+        <div style={{ fontSize: 12, color: "#0369A1", fontWeight: 600, marginBottom: 12 }}>
+          ≈ {formatCurrency(parseFloat(amount) / m)} al mes durante {m} {m === 1 ? "mes" : "meses"}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={onCancel}
+          style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#374151", fontFamily: "'Sora', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+        >
+          <X size={14} /> Cancelar
+        </button>
+        <button
+          onClick={submit}
+          style={{ flex: 1, padding: "11px", borderRadius: 10, border: "none", background: accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Sora', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+        >
+          <Check size={14} /> {initial ? "Guardar cambios" : "Guardar compra"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PURCHASES SECTION ────────────────────────────────────────────────
+function PurchasesSection({ card, accent, onAddPurchase, onUpdatePurchase, onDeletePurchase }) {
+  // null = ninguno, "new" = alta, o el id de la compra en edición.
+  const [editing, setEditing] = useState(null);
+
+  const purchases = (card.purchases || []).filter((p) => purchaseRemainingMonths(p) > 0);
+
+  return (
+    <div style={{ background: "#F9FAFB", borderRadius: 14, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: purchases.length || editing ? 14 : 0 }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: "#111827", display: "flex", alignItems: "center", gap: 7 }}>
+          <ShoppingBag size={16} /> Compras a meses
+        </span>
+        {editing === null && (
+          <button
+            onClick={() => setEditing("new")}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, border: "none",
+              background: accent, color: "#fff", fontSize: 12, fontWeight: 700,
+              padding: "7px 12px", borderRadius: 10, cursor: "pointer",
+              fontFamily: "'Sora', sans-serif",
+            }}
+          >
+            <Plus size={14} /> Agregar
+          </button>
+        )}
+      </div>
+
+      {/* Lista de compras activas */}
+      {purchases.map((p) => {
+        if (editing === p.id) {
+          return (
+            <PurchaseForm
+              key={p.id}
+              accent={accent}
+              initial={p}
+              minMonths={Math.max(1, p.monthsPaid || 0)}
+              onCancel={() => setEditing(null)}
+              onSubmit={(payload) => { onUpdatePurchase(p.id, payload); setEditing(null); }}
+            />
+          );
+        }
+        const monthly   = purchaseMonthly(p);
+        const restMonths = purchaseRemainingMonths(p);
+        const paidMonths = Math.min(p.monthsPaid || 0, p.months);
+        return (
+          <div key={p.id} style={{ background: "#fff", border: "1px solid #F1F5F9", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {p.description || "Compra"}
+                </div>
+                <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                  {formatCurrency(p.amount)} · {p.months} {p.months === 1 ? "mes" : "meses"}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                <button
+                  onClick={() => setEditing(p.id)}
+                  aria-label="Editar compra"
+                  style={{ border: "none", background: "transparent", color: "#6B7280", cursor: "pointer", padding: 4 }}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  onClick={() => onDeletePurchase(p.id)}
+                  aria-label="Eliminar compra"
+                  style={{ border: "none", background: "transparent", color: "#EF4444", cursor: "pointer", padding: 4 }}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+              <span style={{ fontSize: 12, color: "#6B7280" }}>
+                {paidMonths}/{p.months} pagadas · faltan {restMonths}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#0369A1" }}>
+                {formatCurrency(monthly)}<span style={{ fontSize: 11, fontWeight: 500, color: "#9CA3AF" }}>/mes</span>
+              </span>
+            </div>
+            <div style={{ background: "#E5E7EB", borderRadius: 99, height: 5, overflow: "hidden", marginTop: 8 }}>
+              <div style={{ width: `${(paidMonths / p.months) * 100}%`, height: "100%", background: accent, borderRadius: 99 }} />
+            </div>
+          </div>
+        );
+      })}
+
+      {editing === null && purchases.length === 0 && (
+        <p style={{ fontSize: 12, color: "#9CA3AF", marginTop: 12 }}>
+          Sin compras registradas. Agrega tus compras a meses y el pago de cada corte se calcula solo.
+        </p>
+      )}
+
+      {/* Formulario de nueva compra */}
+      {editing === "new" && (
+        <PurchaseForm
+          accent={accent}
+          onCancel={() => setEditing(null)}
+          onSubmit={(payload) => { onAddPurchase(payload); setEditing(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── DETAIL VIEW ──────────────────────────────────────────────────────
-function DetailView({ card, onMarkPaid, onEdit, onDeleteRequest }) {
+function DetailView({ card, onMarkPaid, onEdit, onDeleteRequest, onAddPurchase, onUpdatePurchase, onDeletePurchase }) {
   const b        = getBank(card.bank);
   const payDays  = getDaysUntil(card.payDate);
   const cutDays  = getDaysUntil(card.cutDate);
   const urgency  = URGENCY[getUrgencyKey(payDays)];
+  const balance  = parseFloat(card.balance) || 0;
   const usagePct = card.limit
-    ? Math.min(100, (parseFloat(card.balance) / parseFloat(card.limit)) * 100)
+    ? Math.min(100, (balance / parseFloat(card.limit)) * 100)
     : 0;
+  const activePurchases = (card.purchases || []).filter((p) => purchaseRemainingMonths(p) > 0);
 
   return (
     <div className="pp-panel">
@@ -238,12 +453,30 @@ function DetailView({ card, onMarkPaid, onEdit, onDeleteRequest }) {
         </div>
       </div>
 
+      <div style={{
+        background: "linear-gradient(135deg, #0EA5E9, #0369A1)", borderRadius: 16,
+        padding: "18px 20px", marginBottom: 16, color: "#fff",
+        boxShadow: "0 6px 20px rgba(3,105,161,0.3)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.85, marginBottom: 4 }}>
+          <CalendarClock size={14} /> Pago estimado del próximo corte
+        </div>
+        <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: 28, letterSpacing: "-0.02em" }}>
+          {formatCurrency(card.estimatedPayment)}
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
+          {activePurchases.length > 0
+            ? `Suma de ${activePurchases.length} compra${activePurchases.length > 1 ? "s" : ""} a meses`
+            : "Registra tus compras para estimar el pago"}
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
         {[
           { label: "Fecha de corte",     value: formatDate(card.cutDate),   sub: cutDays >= 0 ? `en ${cutDays} días` : `hace ${Math.abs(cutDays)} días` },
-          { label: "Pago mínimo",        value: formatCurrency(card.minPay), sub: "este período" },
-          { label: "Saldo actual",       value: formatCurrency(card.balance), sub: `${usagePct.toFixed(0)}% del límite` },
-          { label: "Crédito disponible", value: formatCurrency((parseFloat(card.limit) || 0) - (parseFloat(card.balance) || 0)), sub: "disponible" },
+          { label: "Pago mínimo",        value: formatCurrency(card.minPay), sub: "según banco" },
+          { label: "Saldo pendiente",    value: formatCurrency(balance), sub: card.limit ? `${usagePct.toFixed(0)}% del límite` : "total a meses" },
+          { label: "Crédito disponible", value: formatCurrency((parseFloat(card.limit) || 0) - balance), sub: "disponible" },
         ].map(({ label, value, sub }) => (
           <div key={label} style={{ background: "#F9FAFB", borderRadius: 14, padding: "14px 16px" }}>
             <div style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
@@ -265,19 +498,34 @@ function DetailView({ card, onMarkPaid, onEdit, onDeleteRequest }) {
         </div>
       )}
 
+      <PurchasesSection
+        card={card}
+        accent={b.color}
+        onAddPurchase={(p) => onAddPurchase(card.id, p)}
+        onUpdatePurchase={(pid, p) => onUpdatePurchase(card.id, pid, p)}
+        onDeletePurchase={(pid) => onDeletePurchase(card.id, pid)}
+      />
+
       <button
         onClick={() => onMarkPaid(card.id)}
+        disabled={activePurchases.length === 0}
         style={{
           width: "100%", padding: "16px", borderRadius: 14, border: "none",
-          background: `linear-gradient(135deg, ${b.color}, ${b.accent})`,
-          color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
+          background: activePurchases.length === 0 ? "#E5E7EB" : `linear-gradient(135deg, ${b.color}, ${b.accent})`,
+          color: activePurchases.length === 0 ? "#9CA3AF" : "#fff",
+          fontSize: 15, fontWeight: 700, cursor: activePurchases.length === 0 ? "default" : "pointer",
           marginBottom: 10, fontFamily: "'Sora', sans-serif",
-          boxShadow: `0 4px 14px ${b.color}44`,
+          boxShadow: activePurchases.length === 0 ? "none" : `0 4px 14px ${b.color}44`,
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         }}
       >
-        <Check size={18} /> Marcar como Pagado
+        <Check size={18} /> Registrar pago del corte
       </button>
+      {activePurchases.length > 0 && (
+        <p style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginBottom: 10 }}>
+          Avanza una mensualidad en cada compra. Las que se liquiden desaparecen.
+        </p>
+      )}
       <div style={{ display: "flex", gap: 10 }}>
         <button
           onClick={() => onEdit(card)}
@@ -304,6 +552,7 @@ function FormView({ form, setForm, editId, onSave }) {
     <div className="pp-panel">
       <p style={{ color: "#6B7280", fontSize: 13, marginBottom: 20 }}>
         {editId ? "Edita los datos de tu tarjeta." : "Ingresa los datos de tu tarjeta de crédito."}
+        {" "}El saldo y el pago se calculan solos desde las compras que registres.
       </p>
 
       <div style={{ marginBottom: 16 }}>
@@ -332,7 +581,6 @@ function FormView({ form, setForm, editId, onSave }) {
         { key: "cutDate", label: "Fecha de corte *",         placeholder: "",                 type: "date" },
         { key: "payDate", label: "Fecha límite de pago *",   placeholder: "",                 type: "date" },
         { key: "limit",   label: "Límite de crédito (MXN)",  placeholder: "25000",            type: "number", step: "0.01", min: "0.01" },
-        { key: "balance", label: "Saldo actual (MXN)",        placeholder: "0",               type: "number", step: "0.01", min: "0" },
         { key: "minPay",  label: "Pago mínimo (MXN)",         placeholder: "0",               type: "number", step: "0.01", min: "0" },
       ].map(({ key, label, placeholder, type, maxLength, step, min, pattern, inputMode }) => (
         <div key={key} style={{ marginBottom: 14 }}>
@@ -457,12 +705,12 @@ function SettingsView({ notifEnabled, setNotifEnabled, notifDays, setNotifDays, 
 }
 
 export default function CardTracker({ userId, onSignOut }) {
-  const { cards, loading, createCard, updateCard, deleteCard, markPaid } = useCards(userId);
+  const { cards, loading, createCard, updateCard, deleteCard, addPurchase, updatePurchase, deletePurchase, markPaid } = useCards(userId);
 
   const [view, setView]                   = useState("home");
   const [form, setForm]                   = useState(emptyForm);
   const [editId, setEditId]               = useState(null);
-  const [selectedCard, setSelectedCard]   = useState(null);
+  const [selectedId, setSelectedId]       = useState(null);
   const [notifEnabled, setNotifEnabled]   = useState(true);
   const [notifDays, setNotifDays]         = useState([1, 3, 7]);
   const [toast, setToast]                 = useState(null);
@@ -514,9 +762,20 @@ export default function CardTracker({ userId, onSignOut }) {
     () => cards.reduce((s, c) => s + (parseFloat(c.limit) || 0), 0),
     [cards],
   );
+  const totalEstimated = useMemo(
+    () => cards.reduce((s, c) => s + (c.estimatedPayment || 0), 0),
+    [cards],
+  );
+
+  // La tarjeta seleccionada se deriva del estado vivo para que la vista de
+  // detalle refleje al instante las compras agregadas/eliminadas o el pago.
+  const selectedCard = useMemo(
+    () => dynamicCards.find((c) => c.id === selectedId) || null,
+    [dynamicCards, selectedId],
+  );
 
   function goHome() {
-    setView("home"); setEditId(null); setForm(emptyForm); setSelectedCard(null);
+    setView("home"); setEditId(null); setForm(emptyForm); setSelectedId(null);
   }
 
   async function handleSave() {
@@ -544,10 +803,6 @@ export default function CardTracker({ userId, onSignOut }) {
       showToast("El límite de crédito debe ser mayor a 0", "error");
       return;
     }
-    if (form.balance !== "" && (isNaN(parseFloat(form.balance)) || parseFloat(form.balance) < 0)) {
-      showToast("El saldo no puede ser negativo", "error");
-      return;
-    }
     if (form.minPay !== "" && (isNaN(parseFloat(form.minPay)) || parseFloat(form.minPay) < 0)) {
       showToast("El pago mínimo no puede ser negativo", "error");
       return;
@@ -566,7 +821,12 @@ export default function CardTracker({ userId, onSignOut }) {
 
   function handleEdit(card) {
     const raw = cards.find((c) => c.id === card.id) || card;
-    setForm({ ...raw }); setEditId(raw.id); setView("add");
+    setForm({
+      alias: raw.alias, bank: raw.bank, last4: raw.last4 || "",
+      cutDate: raw.cutDate, payDate: raw.payDate,
+      limit: raw.limit || "", minPay: raw.minPay || "",
+    });
+    setEditId(raw.id); setView("add");
   }
 
   async function handleDelete(id) {
@@ -577,12 +837,30 @@ export default function CardTracker({ userId, onSignOut }) {
 
   async function handleMarkPaid(id) {
     const { error } = await markPaid(id);
-    if (error) { showToast("Error al registrar pago", "error"); return; }
-    showToast("Pago registrado"); setView("home");
+    if (error) { showToast(error, "error"); return; }
+    showToast("Pago del corte registrado");
+  }
+
+  async function handleAddPurchase(cardId, purchase) {
+    const { error } = await addPurchase(cardId, purchase);
+    if (error) { showToast(error, "error"); return; }
+    showToast("Compra agregada");
+  }
+
+  async function handleUpdatePurchase(cardId, purchaseId, patch) {
+    const { error } = await updatePurchase(cardId, purchaseId, patch);
+    if (error) { showToast(error, "error"); return; }
+    showToast("Compra actualizada");
+  }
+
+  async function handleDeletePurchase(cardId, purchaseId) {
+    const { error } = await deletePurchase(cardId, purchaseId);
+    if (error) { showToast(error, "error"); return; }
+    showToast("Compra eliminada");
   }
 
   function handleCardSelect(card) {
-    setSelectedCard(card);
+    setSelectedId(card.id);
     setView("detail");
   }
 
@@ -805,6 +1083,11 @@ export default function CardTracker({ userId, onSignOut }) {
                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
                   de {formatCurrency(totalLimit)} en límites
                 </span>
+                {totalEstimated > 0 && (
+                  <span style={{ fontSize: 12, color: "#7DD3FC", fontWeight: 700, whiteSpace: "nowrap" }}>
+                    ~{formatCurrency(totalEstimated)} próximo pago
+                  </span>
+                )}
                 {alertCards.length > 0 && (
                   <span style={{ background: "#EF4444", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, whiteSpace: "nowrap" }}>
                     {alertCards.length} pago{alertCards.length > 1 ? "s" : ""} urgente{alertCards.length > 1 ? "s" : ""}
@@ -891,6 +1174,9 @@ export default function CardTracker({ userId, onSignOut }) {
               onMarkPaid={handleMarkPaid}
               onEdit={handleEdit}
               onDeleteRequest={setDeleteConfirm}
+              onAddPurchase={handleAddPurchase}
+              onUpdatePurchase={handleUpdatePurchase}
+              onDeletePurchase={handleDeletePurchase}
             />
           )}
           {view === "settings" && (
